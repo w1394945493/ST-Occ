@@ -1,0 +1,26 @@
+# Byte-compiled / optimization
+__pycache__/
+*.py[cod]
+*.so
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+mmdet3d/.mim/
+
+# Data, checkpoints and outputs
+data
+ckpts
+work_dirs/
+test/
+.dist_test/
+*.pth
+*.pkl
+*.log
+
+# Editors / misc
+.vscode/
+.idea/
+.DS_Store

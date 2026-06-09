@@ -13,21 +13,39 @@
   <img src="assets/method.png" width="720">
 </p>
 
-## Installation
+## Getting Started
+- [Installation](docs/install.md)
+- [Prepare Dataset](docs/prepare_datasets.md)
+- [Training, Eval, Visualization](docs/start.md)
 
-```
-# Coming soon
-```
+## Model Zoo
+
+| Backbone | Method | Lr Schd | mIoU | mSTCV |  Config | Download |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| R50 | ST-Occ | 28ep | 42.13 | 8.68 |[config](occupancy_configs/st_occ/stocc-r50-256x704-36e.py) |[model](TODO)|
+
+To additionally evaluate the temporal-consistency metric mSTCV (mean SpatioTemporal Classification
+Variability), use
+[stocc-r50-256x704-36e_flicker_eval.py](occupancy_configs/st_occ/stocc-r50-256x704-36e_flicker_eval.py)
+with the same checkpoint (see [docs/start.md](docs/start.md)).
+
+
+## Acknowledgement
+
+Many thanks to these excellent open source projects:
+
+- [FB-OCC](https://github.com/NVlabs/FB-BEV), [BEVFormer](https://github.com/fundamentalvision/BEVFormer), [BEVDet](https://github.com/HuangJunJie2017/BEVDet), [Occ3D](https://github.com/Tsinghua-MARS-Lab/Occ3D), [OpenOccupancy](https://github.com/JeffWang987/OpenOccupancy), [SoloFusion](https://github.com/Divadi/SOLOFusion)
 
 ## Citation
 
 Consider citing our paper if you find our paper is useful for your research:
 
 ```
-@article{leng2025occupancy,
-    title={Occupancy Learning with Spatiotemporal Memory},
-    author={Ziyang Leng and Jiawei Yang and Wenlong Yi and Bolei Zhou},
-    journal={ICCV},
-    year={2025},
+@inproceedings{leng2025occupancy,
+  title={Occupancy learning with spatiotemporal memory},
+  author={Leng, Ziyang and Yang, Jiawei and Yi, Wenlong and Zhou, Bolei},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  pages={26569--26578},
+  year={2025}
 }
 ```
