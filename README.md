@@ -22,7 +22,7 @@
 
 | Backbone | Method | Lr Schd | mIoU | mSTCV |  Config | Download |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| R50 | ST-Occ | 28ep | 42.13 | 8.68 |[config](occupancy_configs/st_occ/stocc-r50-256x704-36e.py) |[model](TODO)|
+| R50 | ST-Occ | 28ep | 42.13 | 8.68 |[config](occupancy_configs/st_occ/stocc-r50-256x704-36e.py) |[model](https://github.com/matthew-leng/ST-Occ/releases/download/v1.0/stocc-r50-256x704.pth)|
 
 To additionally evaluate the temporal-consistency metric mSTCV (mean SpatioTemporal Classification
 Variability), use
