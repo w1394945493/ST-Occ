@@ -16,8 +16,10 @@ from mmdet3d.apis import single_gpu_test
 from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 from mmdet.apis import multi_gpu_test, set_random_seed
-from mmdet3d.apis.test import custom_multi_gpu_test
+
 from mmdet.datasets import replace_ImageToTensor
+
+from mmdet3d.apis.test import custom_multi_gpu_test
 import os.path as osp
 import time
 if mmdet.__version__ > '2.23.0':
@@ -33,7 +35,7 @@ try:
     from mmdet.utils import compat_cfg
 except ImportError:
     from mmdet3d.utils import compat_cfg
-    
+
 from mmdet3d.utils import collect_env, get_root_logger
 
 
@@ -322,10 +324,7 @@ def main():
             use_global_local = eval_kwargs.pop('use_global_local', False)
             # kwargs['save'] =  args.save
             # hard-code way to remove EvalHook args
-            for key in [
-                    'interval', 'tmpdir', 'start', 'gpu_collect', 'save_best',
-                    'rule'
-            ]:
+            for key in ['interval', 'tmpdir', 'start', 'gpu_collect', 'save_best','rule']:
                 eval_kwargs.pop(key, None)
             eval_kwargs.update(dict(metric=args.eval, **kwargs))
             eval_res = dataset.evaluate(outputs, use_global_local=use_global_local, out_dir=log_file.split(".log")[0],**eval_kwargs)

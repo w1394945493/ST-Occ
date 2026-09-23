@@ -1,7 +1,7 @@
-# Copyright (c) 2022-2023, NVIDIA Corporation & Affiliates. All rights reserved. 
-# 
-# This work is made available under the Nvidia Source Code License-NC. 
-# To view a copy of this license, visit 
+# Copyright (c) 2022-2023, NVIDIA Corporation & Affiliates. All rights reserved.
+#
+# This work is made available under the Nvidia Source Code License-NC.
+# To view a copy of this license, visit
 # https://github.com/NVlabs/FB-BEV/blob/main/LICENSE
 
 
@@ -183,7 +183,6 @@ class NuScenesDataset(Custom3DDataset):
                 use_external=False,
             )
 
-
         self.img_info_prototype = img_info_prototype
         self.multi_adj_frame_id_cfg = multi_adj_frame_id_cfg
         self.ego_cam = ego_cam
@@ -193,12 +192,12 @@ class NuScenesDataset(Custom3DDataset):
         self.sequences_split_num = sequences_split_num
         # sequences_split_num splits eacgh sequence into sequences_split_num parts.
         # if self.test_mode:
-            # assert self.sequences_split_num == 1
+        # assert self.sequences_split_num == 1
         if self.use_sequence_group_flag:
             self._set_sequence_group_flag() # Must be called after load_annotations b/c load_annotations does sorting.
 
         self.use_global_info = use_global_info
-        
+
         self.global_local_occupancy_path = global_local_occupancy_path
 
     def get_cat_ids(self, idx):
@@ -241,12 +240,11 @@ class NuScenesDataset(Custom3DDataset):
         self.version = self.metadata['version']
         return data_infos
 
-
     def _set_sequence_group_flag(self):
         """
         Set each sequence to be a different group
         """
-           
+
         res = []
         curr_sequence = 0
         for idx in range(len(self.data_infos)):
@@ -312,14 +310,18 @@ class NuScenesDataset(Custom3DDataset):
         )
         if 'ann_infos' in info:
             input_dict['ann_infos'] = info['ann_infos']
-            
+
         if self.modality['use_camera']:
             if self.img_info_prototype == 'mmcv':
                 image_paths = []
                 lidar2img_rts = []
 
                 for cam_type, cam_info in info['cams'].items():
-                    image_paths.append(cam_info['data_path'])
+                    
+                    # image_paths.append(cam_info['data_path'])
+                    file_name = os.path.join(self.data_root,cam_info["data_path"].replace("./data/nuscenes/",''))
+                    image_paths.append(file_name)
+
                     # obtain lidar to image transformation matrix
                     lidar2cam_r = np.linalg.inv(
                         cam_info['sensor2lidar_rotation'])
@@ -336,7 +338,6 @@ class NuScenesDataset(Custom3DDataset):
                     lidar2img_rts.append(lidar2img_rt)
                     cam_position = np.linalg.inv(lidar2cam_rt.T) @ np.array([0., 0., 0., 1.]).reshape([4, 1])
                     cam_positions.append(cam_position.flatten()[:3])
-                   
 
                 input_dict.update(
                     dict(
@@ -387,24 +388,24 @@ class NuScenesDataset(Custom3DDataset):
                 input_dict['global_to_curr_lidar_rt'] = torch.FloatTensor(nuscenes_get_rt_matrix(
                     self.data_infos[index], self.data_infos[index],
                     "global", "lidar"))
-                
+
             if self.use_global_info:
                 input_dict['global_center'] = torch.FloatTensor(self.data_infos[index]['global_center'])
                 input_dict['global_size'] = torch.FloatTensor(self.data_infos[index]['global_size'])
                 input_dict['curr_tm'] = torch.FloatTensor(self.data_infos[index]['curr_tm'])
-                
+
                 input_dict['global_range_xy'] = self.data_infos[index]['global_range_xy']
                 input_dict['global_kf_token'] = self.data_infos[index]['global_kf_token']
                 input_dict['global_idx'] = self.data_infos[index]['global_idx']
                 input_dict['global_tms'] = self.data_infos[index]['global_tms']
                 input_dict['global_trans'] = self.data_infos[index]['global_trans']
                 input_dict['global_rots'] = self.data_infos[index]['global_rots']
-                
+
                 curr_tm = torch.FloatTensor(nuscenes_get_rt_matrix(
                     self.data_infos[index], self.data_infos[index],
                     "ego", "global"))
                 assert torch.allclose(curr_tm, input_dict['curr_tm'])
-                
+
         return input_dict
 
     def get_adj_info(self, info, index):
@@ -483,7 +484,7 @@ class NuScenesDataset(Custom3DDataset):
         """
         nusc_annos = {}
         mapped_class_names = self.CLASSES
-       
+
         print('Start to convert detection format...')
         for sample_id, det in enumerate(mmcv.track_iter_progress(results)):
             boxes = det['boxes_3d'].tensor.numpy()
@@ -496,7 +497,6 @@ class NuScenesDataset(Custom3DDataset):
 
             sample_token = self.data_infos[sample_id]['token']
 
-            
             trans = self.data_infos[sample_id]['cams'][
                 self.ego_cam]['ego2global_translation']
             rot = self.data_infos[sample_id]['cams'][
@@ -666,7 +666,7 @@ class NuScenesDataset(Custom3DDataset):
                 result_files.update(
                     {name: self._format_bbox(results_, tmp_file_)})
         return result_files, tmp_dir
-    
+
     def evaluate_flickering(self, results, out_dir, logger):
         """Evaluate the spatiotemporal classification variability (STCV).
 
@@ -712,7 +712,6 @@ class NuScenesDataset(Custom3DDataset):
         np.set_printoptions(precision=2)
         return {'flickering': average_flickering_cnt, 'flickering_percentage': average_flickering_percentage, 'mSTCV': mSTCV,
                 'average_dist': average_dist, 'average_dist_percentage': average_dist_percentage}
-        
 
     def evaluate(self, results,
                        logger=None,
@@ -727,34 +726,33 @@ class NuScenesDataset(Custom3DDataset):
                         use_dynamic_mask=False,
                         save_per_frame_miou=False,
                         ):
-            results_dict = {}
-            
-            if results[0].get('flickering', None) is not None: 
-                results_dict.update(self.evaluate_flickering(results, out_dir=out_dir, logger=logger))   
-            
-            if results[0].get('pred_occupancy', None) is not None:
-                results_dict.update(self.evaluate_occupancy(results, show_dir=jsonfile_prefix, save=save, use_global_local=use_global_local,use_dynamic_mask=use_dynamic_mask,out_dir=out_dir if save_per_frame_miou else None))
-                
-            if results[0].get('iou', None) is not None:
-                results_dict.update(self.evaluate_mask(results))
-            
-            if results[0].get('pts_bbox', None) is not None:
-                results_dict.update(self.evaluate_bbox(results, logger=logger,
+        results_dict = {}
+
+        if results[0].get('flickering', None) is not None: 
+            results_dict.update(self.evaluate_flickering(results, out_dir=out_dir, logger=logger))   
+
+        if results[0].get('pred_occupancy', None) is not None:
+            results_dict.update(self.evaluate_occupancy(results, show_dir=jsonfile_prefix, save=save, use_global_local=use_global_local,use_dynamic_mask=use_dynamic_mask,out_dir=out_dir if save_per_frame_miou else None))
+
+        if results[0].get('iou', None) is not None:
+            results_dict.update(self.evaluate_mask(results))
+
+        if results[0].get('pts_bbox', None) is not None:
+            results_dict.update(self.evaluate_bbox(results, logger=logger,
                         metric=metric,
                         jsonfile_prefix=jsonfile_prefix,
                         result_names=result_names,
                         show=show,
                         out_dir=out_dir,
                         pipeline=pipeline))
-            
-            mmcv.mkdir_or_exist(jsonfile_prefix)
-            with open(osp.join(jsonfile_prefix, 'results.csv'), 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(list(results_dict.keys()))
-                writer.writerow(list(results_dict.values()))
 
-            return results_dict
-            
+        mmcv.mkdir_or_exist(jsonfile_prefix)
+        with open(osp.join(jsonfile_prefix, 'results.csv'), 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(list(results_dict.keys()))
+            writer.writerow(list(results_dict.values()))
+
+        return results_dict
 
     def evaluate_occupancy(self, occ_results, runner=None, show_dir=None, save=False, use_global_local=False, use_dynamic_mask=False,out_dir=None, **eval_kwargs):
         from .occ_metrics import Metric_mIoU, Metric_FScore
@@ -773,7 +771,7 @@ class NuScenesDataset(Custom3DDataset):
             use_lidar_mask=False,
             use_image_mask=True,
             out_dir=out_dir)
-        
+
         self.eval_fscore = False
         if  self.eval_fscore:
             self.fscore_eval_metrics = Metric_FScore(
@@ -806,7 +804,7 @@ class NuScenesDataset(Custom3DDataset):
             else:
                 occupancy_file_path = osp.join(self.occupancy_path, scene_name, sample_token, 'labels.npz')
             occ_gt = np.load(occupancy_file_path)
- 
+
             gt_semantics = occ_gt['semantics']
             mask_lidar = occ_gt['mask_lidar'].astype(bool) if not use_global_local else None
             mask_camera = occ_gt['mask_camera'].astype(bool)            
@@ -819,24 +817,22 @@ class NuScenesDataset(Custom3DDataset):
             #             np.savez_compressed(save_path, pred=occ_pred[mask_camera], gt=occ_gt, sample_token=sample_token)
             #             with open(os.path.join(show_dir, 'occupancy_pred', 'file.txt'),'a') as f:
             #                 f.write(save_path+'\n')
-                        # np.savez_compressed(save_path+'_gt', pred= occ_gt['semantics'], gt=occ_gt, sample_token=sample_token)
-                # else:
-                #     sample_token=info['token']
-                #     save_path=os.path.join(show_dir,str(index).zfill(4))
-                #     np.savez_compressed(save_path,pred=occ_pred,gt=occ_gt,sample_token=sample_token)
-
+            # np.savez_compressed(save_path+'_gt', pred= occ_gt['semantics'], gt=occ_gt, sample_token=sample_token)
+            # else:
+            #     sample_token=info['token']
+            #     save_path=os.path.join(show_dir,str(index).zfill(4))
+            #     np.savez_compressed(save_path,pred=occ_pred,gt=occ_gt,sample_token=sample_token)
 
             self.occ_eval_metrics.add_batch(occ_pred[mask_camera], gt_semantics, mask_lidar, mask_camera, sn=scene_name, token=sample_token)
             if self.eval_fscore:
                 self.fscore_eval_metrics.add_batch(occ_pred[mask_camera], gt_semantics, mask_lidar, mask_camera)
-   
+
         res = self.occ_eval_metrics.count_miou()
         if self.eval_fscore:
             res.update(self.fscore_eval_metrics.count_fscore())
-        
 
         return res 
-        
+
     def evaluate_mask(self, results):
         results_dict = {}
         iou = 0
@@ -847,7 +843,6 @@ class NuScenesDataset(Custom3DDataset):
         iou = iou/n
         results_dict['iou'] = iou
         return results_dict
-        
 
     def evaluate_bbox(self,
                  results,
@@ -880,7 +875,6 @@ class NuScenesDataset(Custom3DDataset):
             dict[str, float]: Results of each evaluation metric.
         """
         result_files, tmp_dir = self.format_results(results, jsonfile_prefix)
-
 
         if isinstance(result_files, dict):
             results_dict = dict()
