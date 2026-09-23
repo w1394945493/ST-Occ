@@ -1,4 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import argparse
+import os.path as osp
 import pickle
 
 import numpy as np
@@ -8,8 +10,6 @@ from pyquaternion import Quaternion
 
 from tools.data_converter import nuscenes_converter as nuscenes_converter
 
-from pyquaternion import Quaternion
-import numpy as np
 
 def rt2mat(translation, quaternion=None, inverse=False, rotation=None):
     R = Quaternion(quaternion).rotation_matrix if rotation is None else rotation
@@ -52,8 +52,8 @@ classes = [
     'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
 ]
 
-VERSION= 'v1.0-trainval'
-NUSCENES = 'nuscenes'
+VERSION = 'v1.0-trainval'
+DEFAULT_ROOT = './data/nuscenes'
 def get_gt(info):
     """Generate gt labels from info.
 
@@ -97,7 +97,8 @@ def get_gt(info):
     return gt_boxes, gt_labels
 
 
-def nuscenes_data_prep(root_path, info_prefix, version, max_sweeps=10):
+def nuscenes_data_prep(root_path, info_prefix, version, max_sweeps=10,
+                       out_dir=None):
     """Prepare data related to nuScenes dataset.
 
     Related data consists of '.pkl' files recording basic infos,
@@ -109,20 +110,24 @@ def nuscenes_data_prep(root_path, info_prefix, version, max_sweeps=10):
         version (str): Dataset version.
         max_sweeps (int, optional): Number of input consecutive frames.
             Default: 10
+        out_dir (str, optional): Output directory. Defaults to root_path.
     """
     nuscenes_converter.create_nuscenes_infos(
-        root_path, info_prefix, version=version, max_sweeps=max_sweeps)
+        root_path, info_prefix, version=version, max_sweeps=max_sweeps,
+        out_dir=out_dir)
 
 
 
-def add_ann_adj_info(extra_tag, with_lidar_seg=False):
-    nuscenes_version = VERSION
-    dataroot = f'./data/{NUSCENES}/'
-    nuscenes = NuScenes(nuscenes_version, dataroot)
+def add_ann_adj_info(extra_tag, with_lidar_seg=False, root_path=DEFAULT_ROOT,
+                    out_dir=None, version=VERSION, occ_root=None):
+    out_dir = root_path if out_dir is None else out_dir
+    occ_root = osp.join(root_path, 'gts') if occ_root is None else occ_root
+    nuscenes = NuScenes(version, root_path)
 
     for set in ['train', 'val']:
-        dataset = pickle.load(
-            open('./data/%s/%s_infos_%s.pkl' % (NUSCENES, extra_tag, set), 'rb'))
+        info_path = osp.join(out_dir, f'{extra_tag}_infos_{set}.pkl')
+        with open(info_path, 'rb') as fid:
+            dataset = pickle.load(fid)
         for id in range(len(dataset['infos'])):
             if id % 10 == 0:
                 print('%d/%d' % (id, len(dataset['infos'])))
@@ -151,19 +156,19 @@ def add_ann_adj_info(extra_tag, with_lidar_seg=False):
 
             scene = nuscenes.get('scene', sample['scene_token'])
             dataset['infos'][id]['occ_path'] = \
-                './data/nuscenes/gts/%s/%s'%(scene['name'], info['token'])
-        with open('./data/%s/%s_infos_%s.pkl' % (NUSCENES, extra_tag, set),
-                  'wb') as fid:
+                osp.join(occ_root, scene['name'], info['token'])
+        with open(info_path, 'wb') as fid:
             pickle.dump(dataset, fid)
             
-def add_global_info(extra_tag, with_lidar_seg=False):
-    nuscenes_version = VERSION
-    dataroot = f'./data/{NUSCENES}/'
-    nuscenes = NuScenes(nuscenes_version, dataroot)
+def add_global_info(extra_tag, with_lidar_seg=False, root_path=DEFAULT_ROOT,
+                    out_dir=None, version=VERSION):
+    out_dir = root_path if out_dir is None else out_dir
+    nuscenes = NuScenes(version, root_path)
 
     for set in ['train', 'val']:
-        dataset = pickle.load(
-            open('./data/%s/%s_infos_%s.pkl' % (NUSCENES, extra_tag, set), 'rb'))
+        info_path = osp.join(out_dir, f'{extra_tag}_infos_{set}.pkl')
+        with open(info_path, 'rb') as fid:
+            dataset = pickle.load(fid)
         last_scene = '-1'
         last_token_idx = '-1'
         for id in range(len(dataset['infos'])):
@@ -220,25 +225,56 @@ def add_global_info(extra_tag, with_lidar_seg=False):
             dataset['infos'][id]['global_trans'] = trans
             dataset['infos'][id]['curr_tm'] = tms[curr_idx]
             
-        with open('./data/%s/%s_infos_global_%s.pkl' % (NUSCENES, extra_tag, set),
+        with open(osp.join(out_dir, f'{extra_tag}_infos_global_{set}.pkl'),
                   'wb') as fid:
             pickle.dump(dataset, fid)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Generate nuScenes BEVDet and global info files.')
+    parser.add_argument('--root-path', default=DEFAULT_ROOT,
+                        help='Dataset root (default: %(default)s)')
+    parser.add_argument('--out-dir', default=None,
+                        help='Output directory for all PKL files (default: dataset root)')
+    parser.add_argument('--occ-root', default=None,
+                        help='Occupancy annotation root (default: <root-path>/gts)')
+    parser.add_argument('--extra-tag', default='bevdetv4-nuscenes',
+                        help='Output filename prefix (default: %(default)s)')
+    parser.add_argument('--version', default=VERSION,
+                        choices=['v1.0-trainval', 'v1.0-mini'],
+                        help='Dataset version (default: %(default)s)')
+    parser.add_argument('--max-sweeps', type=int, default=0,
+                        help='Maximum number of sweeps (default: %(default)s)')
+    parser.add_argument('--with-lidar-seg', action='store_true',
+                        help='Include lidarseg annotation filenames')
+    args = parser.parse_args()
+    if args.max_sweeps < 0:
+        parser.error('--max-sweeps must be non-negative')
+    if not args.extra_tag or osp.basename(args.extra_tag) != args.extra_tag:
+        parser.error('--extra-tag must be a non-empty filename prefix without directories')
+    args.root_path = osp.expanduser(args.root_path)
+    args.out_dir = (args.root_path if args.out_dir is None
+                    else osp.expanduser(args.out_dir))
+    args.occ_root = (osp.join(args.root_path, 'gts') if args.occ_root is None
+                     else osp.expanduser(args.occ_root))
+    return args
+
+
 if __name__ == '__main__':
-    dataset = 'nuscenes'
-    version = 'v1.0'
-    train_version = VERSION
-    root_path = f'./data/{NUSCENES}'
-    extra_tag = 'bevdetv4-nuscenes'
+    args = parse_args()
     nuscenes_data_prep(
-        root_path=root_path,
-        info_prefix=extra_tag,
-        version=train_version,
-        max_sweeps=0)
+        root_path=args.root_path,
+        info_prefix=args.extra_tag,
+        version=args.version,
+        max_sweeps=args.max_sweeps,
+        out_dir=args.out_dir)
 
     print('add_ann_infos')
-    add_ann_adj_info(extra_tag)
+    add_ann_adj_info(args.extra_tag, with_lidar_seg=args.with_lidar_seg,
+                     root_path=args.root_path, out_dir=args.out_dir,
+                     version=args.version, occ_root=args.occ_root)
 
     print('add_global_infos')
-    add_global_info(extra_tag)
+    add_global_info(args.extra_tag, root_path=args.root_path,
+                    out_dir=args.out_dir, version=args.version)
