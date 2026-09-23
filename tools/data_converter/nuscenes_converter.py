@@ -28,7 +28,8 @@ def create_nuscenes_infos(root_path,
                           info_prefix,
                           version='v1.0-trainval',
                           max_sweeps=10,
-                          out_dir=None):
+                          out_dir=None,
+                          nusc=None):
     """Create info file of nuscene dataset.
 
     Given the raw data, generate its related info file in pkl format.
@@ -41,11 +42,13 @@ def create_nuscenes_infos(root_path,
         max_sweeps (int, optional): Max number of sweeps.
             Default: 10.
         out_dir (str, optional): Output directory. Defaults to root_path.
+        nusc (NuScenes, optional): Reuse an already loaded dataset.
     """
     out_dir = root_path if out_dir is None else out_dir
     os.makedirs(out_dir, exist_ok=True)
     from nuscenes.nuscenes import NuScenes
-    nusc = NuScenes(version=version, dataroot=root_path, verbose=True)
+    if nusc is None:
+        nusc = NuScenes(version=version, dataroot=root_path, verbose=True)
     from nuscenes.utils import splits
     available_vers = ['v1.0-trainval', 'v1.0-test', 'v1.0-mini']
     assert version in available_vers
@@ -128,7 +131,7 @@ def get_available_scenes(nusc):
         has_more_frames = True
         scene_not_exist = False
         while has_more_frames:
-            lidar_path, boxes, _ = nusc.get_sample_data(sd_rec['token'])
+            lidar_path = nusc.get_sample_data_path(sd_rec['token'])
             lidar_path = str(lidar_path)
             if os.getcwd() in lidar_path:
                 # path from lyftdataset is absolute path
@@ -208,7 +211,11 @@ def _fill_trainval_infos(nusc,
         ]
         for cam in camera_types:
             cam_token = sample['data'][cam]
-            cam_path, _, cam_intrinsic = nusc.get_sample_data(cam_token)
+            # Only intrinsics are needed; avoid transforming all annotation
+            # boxes into each camera and testing their visibility.
+            cam_sd = nusc.get('sample_data', cam_token)
+            cam_cs = nusc.get('calibrated_sensor', cam_sd['calibrated_sensor_token'])
+            cam_intrinsic = np.array(cam_cs['camera_intrinsic'])
             cam_info = obtain_sensor2top(nusc, cam_token, l2e_t, l2e_r_mat,
                                          e2g_t, e2g_r_mat, cam)
             cam_info.update(cam_intrinsic=cam_intrinsic)
@@ -243,10 +250,11 @@ def _fill_trainval_infos(nusc,
                  for anno in annotations],
                 dtype=bool).reshape(-1)
             # convert velo from global to lidar
+            global_to_lidar = (np.linalg.inv(e2g_r_mat).T @
+                               np.linalg.inv(l2e_r_mat).T)
             for i in range(len(boxes)):
                 velo = np.array([*velocity[i], 0.0])
-                velo = velo @ np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(
-                    l2e_r_mat).T
+                velo = velo @ global_to_lidar
                 velocity[i] = velo[:2]
 
             names = [b.name for b in boxes]

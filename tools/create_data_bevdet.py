@@ -98,7 +98,7 @@ def get_gt(info):
 
 
 def nuscenes_data_prep(root_path, info_prefix, version, max_sweeps=10,
-                       out_dir=None):
+                       out_dir=None, nusc=None):
     """Prepare data related to nuScenes dataset.
 
     Related data consists of '.pkl' files recording basic infos,
@@ -111,25 +111,26 @@ def nuscenes_data_prep(root_path, info_prefix, version, max_sweeps=10,
         max_sweeps (int, optional): Number of input consecutive frames.
             Default: 10
         out_dir (str, optional): Output directory. Defaults to root_path.
+        nusc (NuScenes, optional): Reuse an already loaded dataset.
     """
     nuscenes_converter.create_nuscenes_infos(
         root_path, info_prefix, version=version, max_sweeps=max_sweeps,
-        out_dir=out_dir)
+        out_dir=out_dir, nusc=nusc)
 
 
 
 def add_ann_adj_info(extra_tag, with_lidar_seg=False, root_path=DEFAULT_ROOT,
-                    out_dir=None, version=VERSION, occ_root=None):
+                    out_dir=None, version=VERSION, occ_root=None, nusc=None):
     out_dir = root_path if out_dir is None else out_dir
     occ_root = osp.join(root_path, 'gts') if occ_root is None else occ_root
-    nuscenes = NuScenes(version, root_path)
+    nuscenes = NuScenes(version, root_path) if nusc is None else nusc
 
     for set in ['train', 'val']:
         info_path = osp.join(out_dir, f'{extra_tag}_infos_{set}.pkl')
         with open(info_path, 'rb') as fid:
             dataset = pickle.load(fid)
         for id in range(len(dataset['infos'])):
-            if id % 10 == 0:
+            if id % 1000 == 0:
                 print('%d/%d' % (id, len(dataset['infos'])))
             info = dataset['infos'][id]
             # get sweep adjacent frame info
@@ -137,6 +138,11 @@ def add_ann_adj_info(extra_tag, with_lidar_seg=False, root_path=DEFAULT_ROOT,
             ann_infos = list()
             for ann in sample['anns']:
                 ann_info = nuscenes.get('sample_annotation', ann)
+                if (map_name_from_general_to_detection[ann_info['category_name']]
+                        not in classes or
+                        ann_info['num_lidar_pts'] + ann_info['num_radar_pts'] <= 0):
+                    continue
+                ann_info = ann_info.copy()
                 velocity = nuscenes.box_velocity(ann_info['token'])
                 if np.any(np.isnan(velocity)):
                     velocity = np.zeros(3)
@@ -154,16 +160,15 @@ def add_ann_adj_info(extra_tag, with_lidar_seg=False, root_path=DEFAULT_ROOT,
                 dataset['infos'][id]['lidarseg_filename'] =  nuscenes.get('lidarseg', lidar_sd_token)['filename']
 
 
-            scene = nuscenes.get('scene', sample['scene_token'])
             dataset['infos'][id]['occ_path'] = \
                 osp.join(occ_root, scene['name'], info['token'])
         with open(info_path, 'wb') as fid:
             pickle.dump(dataset, fid)
             
 def add_global_info(extra_tag, with_lidar_seg=False, root_path=DEFAULT_ROOT,
-                    out_dir=None, version=VERSION):
+                    out_dir=None, version=VERSION, nusc=None):
     out_dir = root_path if out_dir is None else out_dir
-    nuscenes = NuScenes(version, root_path)
+    nuscenes = NuScenes(version, root_path) if nusc is None else nusc
 
     for set in ['train', 'val']:
         info_path = osp.join(out_dir, f'{extra_tag}_infos_{set}.pkl')
@@ -172,7 +177,7 @@ def add_global_info(extra_tag, with_lidar_seg=False, root_path=DEFAULT_ROOT,
         last_scene = '-1'
         last_token_idx = '-1'
         for id in range(len(dataset['infos'])):
-            if id % 10 == 0:
+            if id % 1000 == 0:
                 print('%d/%d' % (id, len(dataset['infos'])))
             info = dataset['infos'][id]
             # get sweep adjacent frame info
@@ -181,16 +186,18 @@ def add_global_info(extra_tag, with_lidar_seg=False, root_path=DEFAULT_ROOT,
                 scene = nuscenes.get('scene', info['scene_token'])
                 key_frame_recs = [nuscenes.get('sample', scene['first_sample_token'])]
                 key_frame_tokens = [scene['first_sample_token']]
-                tran = nuscenes.get('ego_pose', key_frame_recs[-1]['data']['LIDAR_TOP'])['translation']
-                rot = nuscenes.get('ego_pose', key_frame_recs[-1]['data']['LIDAR_TOP'])['rotation']
+                sd = nuscenes.get('sample_data', key_frame_recs[-1]['data']['LIDAR_TOP'])
+                pose = nuscenes.get('ego_pose', sd['ego_pose_token'])
+                tran, rot = pose['translation'], pose['rotation']
                 x, y, _ = tran
                 tm = rt2mat(tran, quaternion=rot)
                 xs, ys, rots, trans, tms = [x], [y], [rot], [tran], [tm]
                 while key_frame_recs[-1]['next'] != '':
                     key_frame_recs.append(nuscenes.get('sample', key_frame_recs[-1]['next']))
                     key_frame_tokens.append(key_frame_recs[-1]['token'])
-                    tran = nuscenes.get('ego_pose', key_frame_recs[-1]['data']['LIDAR_TOP'])['translation']
-                    rot = nuscenes.get('ego_pose', key_frame_recs[-1]['data']['LIDAR_TOP'])['rotation']
+                    sd = nuscenes.get('sample_data', key_frame_recs[-1]['data']['LIDAR_TOP'])
+                    pose = nuscenes.get('ego_pose', sd['ego_pose_token'])
+                    tran, rot = pose['translation'], pose['rotation']
                     x, y, _ = tran
                     tm = rt2mat(tran, quaternion=rot)
                     xs.append(x)
@@ -207,10 +214,11 @@ def add_global_info(extra_tag, with_lidar_seg=False, root_path=DEFAULT_ROOT,
                 aabb_min, aabb_max = np.split(global_range_xy, 2)
                 global_size = aabb_max - aabb_min
                 global_center = [global_x_center, global_y_center, 0]
+                token_to_idx = {token: idx for idx, token in enumerate(key_frame_tokens)}
                 # reset last_scene
                 last_scene = sample['scene_token']
                 last_token_idx = -1
-            curr_idx = key_frame_tokens.index(info['token'])
+            curr_idx = token_to_idx[info['token']]
             assert curr_idx == last_token_idx + 1
             last_token_idx = curr_idx
             
@@ -263,18 +271,19 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
+    nusc = NuScenes(args.version, args.root_path)
     nuscenes_data_prep(
         root_path=args.root_path,
         info_prefix=args.extra_tag,
         version=args.version,
         max_sweeps=args.max_sweeps,
-        out_dir=args.out_dir)
+        out_dir=args.out_dir, nusc=nusc)
 
     print('add_ann_infos')
     add_ann_adj_info(args.extra_tag, with_lidar_seg=args.with_lidar_seg,
                      root_path=args.root_path, out_dir=args.out_dir,
-                     version=args.version, occ_root=args.occ_root)
+                     version=args.version, occ_root=args.occ_root, nusc=nusc)
 
     print('add_global_infos')
     add_global_info(args.extra_tag, root_path=args.root_path,
-                    out_dir=args.out_dir, version=args.version)
+                    out_dir=args.out_dir, version=args.version, nusc=nusc)
