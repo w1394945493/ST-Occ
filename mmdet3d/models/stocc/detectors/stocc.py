@@ -810,8 +810,9 @@ class STOcc(CenterPoint):
                 raise ValueError(
                     'num of augmentations ({}) != num of image meta ({})'.format(
                         len(img_inputs), len(img_metas)))
-            if num_augs == 1 and not img_metas[0].data[0][0].get('tta_config', dict(dist_tta=False))['dist_tta']:
-                return self.simple_test(points[0], img_metas[0].data[0], img_inputs[0],
+            if num_augs == 1 and not img_metas[0][0].get(
+                    'tta_config', {}).get('dist_tta', False):
+                return self.simple_test(points[0], img_metas[0], img_inputs[0],
                                         **kwargs)
             else:
                 return self.aug_test(points, img_metas, img_inputs, **kwargs)
